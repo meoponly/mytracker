@@ -1,0 +1,1761 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<script>
+  const CLOUD_BIN_ID  = '686e8e538960c979a5a36e6c';
+  const CLOUD_API_KEY = '$2a$10$8pWFBdCp5lILDpWxEHGnzuqrBNPjcA5WTh2mHkzODvuuJ5E6VBPLe';
+  const CLOUD_URL = 'https://api.jsonbin.io/v3/b/' + CLOUD_BIN_ID;
+  const CORRECT_PASSWORD = 'meoponly';
+
+  function checkPassword() {
+    if (localStorage.getItem('komeback_auth') === CORRECT_PASSWORD) return true;
+    const input = prompt('Enter password:');
+    if (input === CORRECT_PASSWORD) {
+      localStorage.setItem('komeback_auth', CORRECT_PASSWORD);
+      return true;
+    }
+    document.body.innerHTML = '<div style="background:#121212;color:#555;font-family:monospace;height:100vh;display:flex;align-items:center;justify-content:center;font-size:18px;">access denied.</div>';
+    return false;
+  }
+
+  function setSyncStatus(state) {
+    var el = document.getElementById('sync-status');
+    if (!el) return;
+    if (state === 'syncing') { el.textContent = '↑ saving...'; el.style.color = '#666'; }
+    else if (state === 'saved') { el.textContent = '✓ synced'; el.style.color = '#444'; }
+    else if (state === 'error') { el.textContent = '✗ error'; el.style.color = '#ff5555'; }
+  }
+
+  var _saveTimer = null;
+  function cloudPush() {
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(function() {
+      setSyncStatus('syncing');
+      var payload = {
+        studyLog:      JSON.parse(localStorage.getItem('studyLog')        || '[]'),
+        studySubjects: JSON.parse(localStorage.getItem('studySubjects')   || '[]'),
+        studyTodos:    JSON.parse(localStorage.getItem('studyTodos')      || '[]'),
+        studyLinks:    JSON.parse(localStorage.getItem('studyLinks')      || '[]'),
+        studyExams:    JSON.parse(localStorage.getItem('studyExams')      || '[]'),
+        ioqmData:      JSON.parse(localStorage.getItem('ioqm_data_local') || 'null'),
+        ts: Date.now()
+      };
+      fetch(CLOUD_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Master-Key': CLOUD_API_KEY },
+        body: JSON.stringify(payload)
+      }).then(function(r){ setSyncStatus(r.ok ? 'saved' : 'error'); }).catch(function(){ setSyncStatus('error'); });
+    }, 1200);
+  }
+
+  function cloudPullIfNewer() {
+    setSyncStatus('syncing');
+    fetch(CLOUD_URL + '/latest', { headers: { 'X-Master-Key': CLOUD_API_KEY } })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      var record = data.record;
+      var cloudTs = (record && record.ts) ? record.ts : 0;
+      var localTs = parseInt(localStorage.getItem('komeback_ts') || '0');
+      if (cloudTs > localTs) {
+        var _set = _origLSSet;
+        if (record.studyLog)      _set('studyLog',        JSON.stringify(record.studyLog));
+        if (record.studySubjects) _set('studySubjects',   JSON.stringify(record.studySubjects));
+        if (record.studyTodos)    _set('studyTodos',      JSON.stringify(record.studyTodos));
+        if (record.studyLinks)    _set('studyLinks',      JSON.stringify(record.studyLinks));
+        if (record.studyExams)    _set('studyExams',      JSON.stringify(record.studyExams));
+        if (record.ioqmData)      _set('ioqm_data_local', JSON.stringify(record.ioqmData));
+        _set('komeback_ts', String(cloudTs));
+        entries  = JSON.parse(localStorage.getItem('studyLog')      || '[]');
+        subjects = JSON.parse(localStorage.getItem('studySubjects') || '[]');
+        todos    = JSON.parse(localStorage.getItem('studyTodos')    || '[]');
+        links    = JSON.parse(localStorage.getItem('studyLinks')    || '[]');
+        exams    = JSON.parse(localStorage.getItem('studyExams')    || '[]');
+        render(); renderTodos(); renderLinks(); renderSubjects(); renderExams();
+      }
+      setSyncStatus('saved');
+    })
+    .catch(function(){ setSyncStatus('error'); });
+  }
+
+  var _origLSSet = localStorage.setItem.bind(localStorage);
+  localStorage.setItem = function(key, value) {
+    _origLSSet(key, value);
+    var syncKeys = ['studyLog','studySubjects','studyTodos','studyLinks','studyExams','ioqm_data_local'];
+    if (syncKeys.indexOf(key) !== -1) {
+      _origLSSet('komeback_ts', String(Date.now()));
+      cloudPush();
+    }
+  };
+<\/script>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjUwIDIwIDI4NCA0NzIiPjxwYXRoIGZpbGw9ImJsYWNrIiBkPSJNMzE4LjcgMjY4LjdjLS4yLTM2LjcgMTYuNC02NC40IDUwLTg0LjgtMTguOC0yNi45LTQ3LjItNDEuNy04NC43LTQ0LjYtMzUuNS0yLjgtNzQuMyAyMC43LTg4LjUgMjAuNy0xNSAwLTQ5LjQtMTkuNy03Ni40LTE5LjdDNjMuMyAxNDEuMiA0IDE4NC44IDQgMjczLjVxMCAzOS4zIDE0LjQgODEuMmMxMi44IDM2LjcgNTkgMTI2LjcgMTA3LjIgMTI1LjIgMjUuMi0uNiA0My0xNy45IDc1LjgtMTcuOSAzMS44IDAgNDguMyAxNy45IDc2LjQgMTcuOSA0OC42LS43IDkwLjQtODIuNSAxMDIuNi0xMTkuMy02NS4yLTMwLjctNjEuNy05MC02MS43LTkxLjl6bS01Ni42LTE2NC4yYzI3LjMtMzIuNCAyNC44LTYxLjkgMjQtNzIuNS0yNC4xIDEuNC01MiAxNi40LTY3LjkgMzQuOS0xNy41IDE5LjgtMjcuOCA0NC4zLTI1LjYgNzEuOSAyNi4xIDIgNDkuOS0xMS40IDY5LjUtMzQuM3oiLz48L3N2Zz4=">
+
+
+
+
+
+<style>
+  html {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  html::-webkit-scrollbar {
+    display: none;
+  }
+  body {
+    background-color: #121212;
+    color: #e0e0e0;
+    font-family: monospace;
+    margin: 0;
+    padding: 40px;
+    font-size: 16px;
+    overflow-y: scroll;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    zoom: 0.85;
+    box-sizing: border-box;
+  }
+  body::-webkit-scrollbar {
+    display: none;
+  }
+  /* Page border wrapper */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    border: 12px solid #121212;
+    pointer-events: none;
+    z-index: 99999;
+    box-sizing: border-box;
+  }
+  #brand {
+    position: fixed;
+    top: 15px;
+    left: 20px;
+    color: #555;
+    font-size: 12px;
+  }
+
+  /* Settings Icon Style */
+  #settings-btn {
+    position: fixed;
+    top: 15px;
+    right: 20px;
+    color: #555;
+    font-size: 18px;
+    cursor: pointer;
+    z-index: 100;
+  }
+  #settings-btn:hover {
+    color: #888;
+  }
+  
+  /* Top Layout container */
+  .top-wrapper {
+    display: flex;
+    justify-content: flex-start;
+    align-items: flex-start;
+    gap: 30px;
+    margin-top: 10px;
+    margin-bottom: 0;
+    position: sticky;
+    top: 0;
+    background-color: #121212;
+    z-index: 500;
+    padding-bottom: 20px;
+    padding-top: 4px;
+  }
+  
+  .input-section {
+    flex-shrink: 0;
+  }
+
+  input[type="text"], .main-btn {
+    background-color: #1e1e1e;
+    border: 1px solid #333;
+    color: #e0e0e0;
+    font-family: monospace;
+    padding: 10px;
+    margin-right: 10px;
+    margin-bottom: 20px;
+    font-size: 16px;
+  }
+  input[type="text"]:focus, .main-btn:focus {
+    outline: none;
+    border-color: #888;
+  }
+  button {
+    cursor: pointer;
+  }
+  .main-btn:hover {
+    background-color: #333;
+  }
+
+  .inline-input {
+    background-color: #1a1a1a !important;
+    border: 1px solid #555 !important;
+    color: #fff !important;
+    padding: 4px 6px !important;
+    font-size: 13px !important;
+    margin: 2px 0 !important;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .tracker-section {
+    display: flex;
+    gap: 15px;
+    max-width: 50%;
+    overflow-x: auto;
+    align-items: stretch;
+  }
+  
+  .subject-col {
+    border: 1px dashed #333;
+    padding: 10px;
+    min-width: 140px;
+    max-width: 160px;
+    display: flex;
+    flex-direction: column;
+    height: 210px; 
+  }
+
+  .subject-title {
+    color: #888;
+    margin-bottom: 10px;
+    font-size: 0.9em;
+    text-align: center;
+    border-bottom: 1px solid #333;
+    padding-bottom: 5px;
+    text-transform: uppercase;
+  }
+
+  .chapter-list {
+    flex-grow: 1;
+    overflow-y: auto;
+    margin-bottom: 5px;
+  }
+
+  .chapter-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    font-size: 0.8em;
+    margin-bottom: 6px;
+    color: #bbb;
+    word-break: break-word;
+    line-height: 1.2;
+    gap: 8px;
+  }
+
+  .chapter-item input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+    accent-color: #555;
+    flex-shrink: 0;
+  }
+
+  .add-chapter-btn {
+    background: none;
+    border: none;
+    color: #555;
+    text-align: center;
+    width: 100%;
+    padding: 2px 0;
+    margin: 0;
+    font-size: 14px;
+    font-family: monospace;
+  }
+
+  .add-chapter-btn:hover {
+    color: #aaa;
+  }
+
+  .add-subject-btn {
+    border: 1px dashed #333;
+    background: transparent;
+    color: #555;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    cursor: pointer;
+    font-family: monospace;
+    font-size: 16px;
+  }
+  
+  .add-subject-btn:hover {
+    color: #e0e0e0;
+    border-color: #555;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Log Styles */
+  .day-header {
+    color: #888;
+    border-bottom: 1px dashed #333;
+    padding-bottom: 5px;
+    margin-top: 30px;
+    margin-bottom: 15px;
+    display: flex;
+    justify-content: space-between; /* Space for Total Time */
+  }
+  .entry {
+    border-left: 2px solid #444;
+    padding-left: 15px;
+    margin-bottom: 15px;
+    position: relative;
+    min-height: 24px;
+  }
+  .date {
+    font-size: 0.85em;
+    color: #888;
+    margin-bottom: 5px;
+    display: inline-block;
+  }
+  .actions {
+    position: absolute;
+    right: 0;
+    top: 0;
+  }
+  .action-btn {
+    background: none;
+    border: none;
+    color: #555;
+    padding: 0 0 0 8px;
+    margin: 0;
+    font-size: 14px;
+    font-family: monospace;
+  }
+  .action-btn:hover {
+    color: #aaa;
+  }
+  .action-btn.del:hover {
+    color: #ff5555;
+  }
+  .dpp-container {
+    margin-top: 6px;
+    color: #aaa;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9em;
+    max-width: 150px;
+  }
+
+  /* Settings Modal Styles */
+  #settings-modal {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(18, 18, 18, 0.98);
+    z-index: 1000;
+    padding: 40px;
+    overflow-y: auto;
+  }
+  .close-settings {
+    position: fixed;
+    top: 20px; right: 40px;
+    cursor: pointer;
+    color: #888;
+    font-size: 18px;
+  }
+  .settings-content {
+    max-width: 600px;
+    margin: 40px auto;
+  }
+  .settings-section {
+    border: 1px dashed #333;
+    padding: 15px;
+    margin-bottom: 20px;
+  }
+  .settings-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 14px;
+  }
+  .del-btn {
+    color: #ff5555;
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-family: monospace;
+  }
+
+  /* ── MOBILE RESPONSIVE ── */
+  @media (max-width: 768px) {
+    body { padding: 12px !important; padding-top: 52px !important; font-size: 14px !important; zoom: 1 !important; }
+    .top-wrapper { flex-direction: column; gap: 10px; padding-bottom: 10px; }
+    .input-section { width: 100%; }
+    .input-section input[type="text"] { width: calc(48% - 6px); margin-right: 6px; margin-bottom: 8px; font-size: 14px; padding: 8px; }
+    .main-btn { padding: 8px 14px; font-size: 14px; }
+    .tracker-section { max-width: 100%; overflow-x: auto; flex-wrap: nowrap; }
+    .subject-col { min-width: 120px; max-width: 140px; height: 170px; }
+    #linksTracker .subject-col { min-width: 85px; max-width: 100px; }
+    #examTracker > div > div { min-width: 95px !important; max-width: 120px !important; padding: 10px !important; }
+    .entry { padding-right: 55px; }
+    #brand { font-size: 11px; top: 12px; left: 12px; }
+    #sync-status { top: 12px; left: 76px; }
+    #settings-btn { top: 10px; right: 12px; }
+    #ioqm-nav-btn { top: 10px !important; right: 40px !important; }
+    .settings-content { margin: 20px auto; }
+    #settings-modal { padding: 20px; }
+  }
+  @media (max-width: 420px) {
+    .input-section input[type="text"] { width: 100%; display: block; margin-right: 0; }
+  }
+</style>
+</head>
+<body>
+<script>if (!checkPassword()) { throw new Error("auth"); }<\/script>
+
+  <div id="brand">komeback</div>
+  <div id="sync-status" style="position:fixed;top:15px;left:88px;color:#444;font-size:10px;font-family:monospace;z-index:200;letter-spacing:0.02em;"></div>
+  <div id="settings-btn" onclick="toggleSettings()">⚙</div>
+  <div id="ioqm-nav-btn" onclick="toggleIoqmPanel()" style="
+    position: fixed;
+    top: 15px;
+    right: 55px;
+    color: #555;
+    font-size: 12px;
+    cursor: pointer;
+    z-index: 100;
+    font-family: monospace;
+  " onmouseover="this.style.color='#888'" onmouseout="this.style.color='#555'">ioqm</div>
+
+  <!-- IOQM Full Page Takeover -->
+  <div id="ioqm-panel" style="
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 8999;
+    background: #f9fafb;
+    flex-direction: column;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    overflow: hidden;
+  ">
+    <!-- Panel header -->
+    <div style="
+      flex-shrink: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 24px;
+      background: #111827;
+    ">
+      <div style="display:flex; align-items:center; gap:20px;">
+        <span onclick="toggleIoqmPanel()" style="color:#9ca3af; cursor:pointer; font-size:13px; font-family:monospace; letter-spacing:0.03em;" onmouseover="this.style.color='#e5e7eb'" onmouseout="this.style.color='#9ca3af'">← back</span>
+        <span style="color:#e5e7eb; font-weight:700; font-size:16px; font-family:ui-sans-serif,system-ui,sans-serif;">IOQM Pro</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button onclick="ioqmShowAnalytics()" style="background:#1f2937; border:none; color:#d1d5db; padding:6px 14px; border-radius:8px; cursor:pointer; font-size:13px; font-family:ui-sans-serif,system-ui,sans-serif; display:flex; align-items:center; gap:6px;" onmouseover="this.style.background='#374151'" onmouseout="this.style.background='#1f2937'">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Analytics
+        </button>
+        <button onclick="ioqmShowSettings()" style="background:#1f2937; border:none; color:#d1d5db; padding:6px 14px; border-radius:8px; cursor:pointer; font-size:13px; font-family:ui-sans-serif,system-ui,sans-serif; display:flex; align-items:center; gap:6px;" onmouseover="this.style.background='#374151'" onmouseout="this.style.background='#1f2937'">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          Settings
+        </button>
+      </div>
+    </div>
+    <!-- Scrollable content -->
+    <div id="ioqm-app" style="flex:1; overflow-y:auto; padding:20px; scrollbar-width:none; -ms-overflow-style:none; zoom:1.25;"></div>
+  </div>
+
+  <!-- IOQM Settings Modal -->
+  <div id="ioqm-settings-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9100; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,0.4); max-width:420px; width:90%; font-family:ui-sans-serif,system-ui,sans-serif; overflow:hidden;">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:20px 24px; border-bottom:1px solid #e5e7eb;">
+        <span style="font-size:20px; font-weight:700; color:#111827;">Settings</span>
+        <button onclick="ioqmHideSettings()" style="background:none;border:none;cursor:pointer;color:#6b7280;font-size:20px;">✕</button>
+      </div>
+      <div style="padding:20px 24px; display:flex; flex-direction:column; gap:12px;">
+        <button onclick="ioqmChangeTheme()" style="display:flex;align-items:center;gap:12px;padding:14px;background:#f9fafb;border:none;border-radius:10px;cursor:pointer;width:100%;text-align:left;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background='#f9fafb'">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <div><div style="font-weight:600;color:#111827;">Change Theme</div><div style="font-size:13px;color:#6b7280;">Switch between light and dark mode</div></div>
+        </button>
+        <button onclick="ioqmExportData()" style="display:flex;align-items:center;gap:12px;padding:14px;background:#f0fdf4;border:none;border-radius:10px;cursor:pointer;width:100%;text-align:left;" onmouseover="this.style.background='#dcfce7'" onmouseout="this.style.background='#f0fdf4'">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <div><div style="font-weight:600;color:#16a34a;">Export to CSV</div><div style="font-size:13px;color:#6b7280;">Download your progress as CSV file</div></div>
+        </button>
+        <button onclick="ioqmResetData()" style="display:flex;align-items:center;gap:12px;padding:14px;background:#fff5f5;border:none;border-radius:10px;cursor:pointer;width:100%;text-align:left;" onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff5f5'">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          <div><div style="font-weight:600;color:#dc2626;">Reset Data</div><div style="font-size:13px;color:#6b7280;">Clear all progress and start fresh</div></div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- IOQM Analytics Modal -->
+  <div id="ioqm-analytics-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9100; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,0.4); max-width:700px; width:93vw; max-height:88vh; font-family:ui-sans-serif,system-ui,sans-serif; overflow:hidden; display:flex; flex-direction:column;">
+      <div style="display:flex; justify-content:space-between; align-items:center; padding:20px 24px; border-bottom:1px solid #e5e7eb; flex-shrink:0;">
+        <span style="font-size:20px; font-weight:700; color:#111827;">Analytics Dashboard</span>
+        <button onclick="ioqmHideAnalytics()" style="background:none;border:none;cursor:pointer;color:#6b7280;font-size:20px;">✕</button>
+      </div>
+      <div id="ioqm-analytics-content" style="padding:24px; overflow-y:auto; flex:1; scrollbar-width:none; -ms-overflow-style:none;"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes ioqm-confetti-fall { to { transform: translateY(100vh) rotate(360deg); opacity: 0; } }
+    .ioqm-confetti { position: fixed; width: 10px; height: 10px; z-index: 9999; pointer-events: none; }
+    #ioqm-app::-webkit-scrollbar,
+    #ioqm-analytics-content::-webkit-scrollbar,
+    #settings-modal::-webkit-scrollbar { display: none; }
+  </style>
+
+  <div id="settings-modal">
+    <div class="close-settings" onclick="toggleSettings()">[x] close</div>
+    <div class="settings-content" id="settingsContent">
+      </div>
+  </div>
+
+  <div class="top-wrapper">
+    <div class="input-section">
+      <input type="text" id="topic" placeholder="what studied" autocomplete="off" autofocus>
+      <input type="text" id="time" placeholder="time (e.g., 2 hrs)" autocomplete="off">
+      <button class="main-btn" onclick="addEntry()">add</button>
+      <div id="examTracker"></div>
+    </div>
+    
+    <div id="linksTracker"></div>
+
+    <div id="todoTracker"></div>
+
+    <div class="tracker-section no-scrollbar" id="subjectTracker">
+      </div>
+  </div>
+
+
+
+  <div id="log"></div>
+
+  <script>
+    // --- Data Stores ---
+    let entries = JSON.parse(localStorage.getItem('studyLog')) || [];
+    let subjects = JSON.parse(localStorage.getItem('studySubjects')) || [];
+    let todos = JSON.parse(localStorage.getItem('studyTodos')) || [];
+    let links = JSON.parse(localStorage.getItem('studyLinks')) || [];
+    
+    // Ensure data integrity
+    entries = entries.map(e => ({
+      ...e, id: e.id || Math.random(), hasDpp: e.hasDpp || false, dppCompleted: e.dppCompleted || false
+    }));
+
+    // --- Time Calculation Helper ---
+    function parseTimeToMinutes(timeStr) {
+      if (!timeStr) return 0;
+      let totalMinutes = 0;
+      const hoursMatch = timeStr.match(/(\d+(\.\d+)?)\s*(h|hr|hour)/i);
+      const minsMatch = timeStr.match(/(\d+(\.\d+)?)\s*(m|min)/i);
+      
+      if (hoursMatch) totalMinutes += parseFloat(hoursMatch[1]) * 60;
+      if (minsMatch) totalMinutes += parseFloat(minsMatch[1]);
+      
+      // If just a number is entered, assume minutes
+      if (!hoursMatch && !minsMatch && !isNaN(timeStr)) totalMinutes += parseFloat(timeStr);
+      
+      return totalMinutes;
+    }
+
+    function formatMinutes(totalMinutes) {
+      const h = Math.floor(totalMinutes / 60);
+      const m = Math.round(totalMinutes % 60);
+      let res = "";
+      if (h > 0) res += h + "h ";
+      if (m > 0 || res === "") res += m + "m";
+      return res.trim();
+    }
+
+    // --- Study Log Logic ---
+    function render() {
+      const logDiv = document.getElementById('log');
+      logDiv.innerHTML = '';
+      
+      const todayString = new Date().toLocaleDateString();
+      const grouped = {};
+      
+      entries.forEach(entry => {
+        const entryDateObj = new Date(entry.date);
+        const entryDayString = entryDateObj.toLocaleDateString() !== "Invalid Date" 
+          ? entryDateObj.toLocaleDateString() 
+          : entry.date.split(',')[0];
+
+        if (!grouped[entryDayString]) {
+          grouped[entryDayString] = { items: [], dailyMins: 0 };
+        }
+        grouped[entryDayString].items.push(entry);
+        grouped[entryDayString].dailyMins += parseTimeToMinutes(entry.time);
+      });
+
+      const sortedDays = Object.keys(grouped).sort((a, b) => {
+        const dateA = new Date(grouped[a].items[0].date).getTime() || 0;
+        const dateB = new Date(grouped[b].items[0].date).getTime() || 0;
+        return dateB - dateA; 
+      });
+
+      sortedDays.forEach(dayString => {
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'day-header';
+        
+        // Added Total Time to the line
+        const totalDisplay = grouped[dayString].dailyMins > 0 
+          ? `<span style="color:#555;">Total: ${formatMinutes(grouped[dayString].dailyMins)}</span>` 
+          : '';
+          
+        headerDiv.innerHTML = `<span>${dayString}</span> ${totalDisplay}`;
+        logDiv.appendChild(headerDiv);
+
+        const dayEntries = grouped[dayString].items.sort((a, b) => {
+          return new Date(a.date).getTime() - new Date(b.date).getTime(); 
+        });
+
+        dayEntries.forEach(entry => {
+          const entryDateObj = new Date(entry.date);
+          const timeString = entryDateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) !== "Invalid Date"
+            ? entryDateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+            : entry.date;
+
+          const timeDisplay = entry.time ? ` for ${entry.time}` : '';
+          
+          const actionsHTML = (dayString === todayString) 
+            ? `<div class="actions">
+                 <button class="action-btn" onclick="editEntry(${entry.id})">[e]</button>
+                 <button class="action-btn del" onclick="deleteEntry(${entry.id})">[x]</button>
+               </div>` 
+            : '';
+
+          const dppHTML = entry.hasDpp 
+            ? `<div class="dpp-container">
+                 <span style="${entry.dppCompleted ? 'text-decoration:line-through;opacity:0.5;' : ''}">dpp complete</span>
+                 <input type="checkbox" ${entry.dppCompleted ? 'checked' : ''} onchange="toggleDpp(${entry.id})"> 
+               </div>`
+            : '';
+
+          const div = document.createElement('div');
+          div.className = 'entry';
+          div.id = `entry-${entry.id}`;
+          div.innerHTML = `
+            ${actionsHTML}
+            <span class="date">${timeString}</span><br>
+            ${entry.topic}${timeDisplay}
+            ${dppHTML}
+          `;
+          logDiv.appendChild(div);
+        });
+      });
+    }
+
+    function addEntry(forceTopic = '', forceTime = '') {
+      const topic = forceTopic || document.getElementById('topic').value.trim();
+      const time = forceTime || (forceTopic ? '' : document.getElementById('time').value.trim());
+      
+      if (!topic && !time) return;
+
+      const date = new Date().toLocaleString();
+      const id = Date.now();
+      
+      const topicLower = topic.toLowerCase();
+      const hasDpp = topicLower.startsWith('ioqm') && topicLower.includes('-- lec --');
+
+      entries.push({ topic, time, date, id, hasDpp, dppCompleted: false });
+      localStorage.setItem('studyLog', JSON.stringify(entries));
+      
+      if (!forceTopic) {
+        document.getElementById('topic').value = '';
+        document.getElementById('time').value = '';
+        document.getElementById('topic').focus();
+      }
+      
+      render();
+    }
+
+    function editEntry(id) {
+      const entry = entries.find(e => e.id === id);
+      if (!entry) return;
+
+      const div = document.getElementById(`entry-${id}`);
+      div.innerHTML = `
+        <input type="text" id="edit-topic-${id}" value="${entry.topic}" class="inline-input" style="width: 200px;">
+        <input type="text" id="edit-time-${id}" value="${entry.time}" class="inline-input" style="width: 80px;" placeholder="time">
+        <button class="action-btn" onclick="saveEdit(${id})" style="color:#aaa;">[save]</button>
+      `;
+      document.getElementById(`edit-topic-${id}`).focus();
+    }
+
+    function saveEdit(id) {
+      const entry = entries.find(e => e.id === id);
+      const newTopic = document.getElementById(`edit-topic-${id}`).value.trim();
+      const newTime = document.getElementById(`edit-time-${id}`).value.trim();
+      
+      if (newTopic || newTime) {
+        entry.topic = newTopic;
+        entry.time = newTime;
+        const topicLower = entry.topic.toLowerCase();
+        entry.hasDpp = topicLower.startsWith('ioqm') && topicLower.includes('-- lec --');
+        if(!entry.hasDpp) entry.dppCompleted = false;
+        
+        localStorage.setItem('studyLog', JSON.stringify(entries));
+      }
+      render();
+    }
+
+    function deleteEntry(id) {
+      entries = entries.filter(e => e.id !== id);
+      localStorage.setItem('studyLog', JSON.stringify(entries));
+      render();
+    }
+
+    function toggleDpp(id) {
+      const entry = entries.find(e => e.id === id);
+      if (entry) {
+        entry.dppCompleted = !entry.dppCompleted;
+        localStorage.setItem('studyLog', JSON.stringify(entries));
+        render();
+      }
+    }
+
+    // --- Settings Logic ---
+    function toggleSettings() {
+      const modal = document.getElementById('settings-modal');
+      const isOpen = modal.style.display === 'block';
+      modal.style.display = isOpen ? 'none' : 'block';
+      if (!isOpen) renderSettings();
+    }
+
+    function renderSettings() {
+      const content = document.getElementById('settingsContent');
+      content.innerHTML = '<h2 style="border-bottom:1px dashed #333; padding-bottom:10px; margin-bottom:20px;">Settings - Manage Content</h2>';
+      
+      // Links section
+      const linksSection = document.createElement('div');
+      linksSection.className = 'settings-section';
+      linksSection.innerHTML = `
+        <div class="settings-row" style="border-bottom: 1px solid #333; padding-bottom:5px; margin-bottom:10px;">
+          <strong style="color:#888;">LINKS</strong>
+        </div>
+      `;
+      links.forEach(link => {
+        const linkRow = document.createElement('div');
+        linkRow.className = 'settings-row';
+        linkRow.style.marginLeft = '20px';
+        linkRow.innerHTML = `
+          <span>${link.name} <span style="color:#555; font-size:0.85em;">(${link.url})</span></span>
+          <button class="del-btn" onclick="deleteLink(${link.id})">[x]</button>
+        `;
+        linksSection.appendChild(linkRow);
+      });
+      content.appendChild(linksSection);
+
+      subjects.forEach(sub => {
+        const section = document.createElement('div');
+        section.className = 'settings-section';
+        section.innerHTML = `
+          <div class="settings-row" style="border-bottom: 1px solid #333; padding-bottom:5px; margin-bottom:10px;">
+            <strong style="color:#888;">${sub.name}</strong>
+            <button class="del-btn" onclick="deleteSubject(${sub.id})">[Delete Subject]</button>
+          </div>
+        `;
+        
+        sub.chapters.forEach(chap => {
+          const chapRow = document.createElement('div');
+          chapRow.className = 'settings-row';
+          chapRow.style.marginLeft = '20px';
+          chapRow.innerHTML = `
+            <span>${chap.name}</span>
+            <button class="del-btn" onclick="deleteChapter(${sub.id}, ${chap.id})">[x]</button>
+          `;
+          section.appendChild(chapRow);
+        });
+        content.appendChild(section);
+      });
+    }
+
+    function deleteSubject(id) {
+      if (confirm("Delete this subject and all its chapters?")) {
+        subjects = subjects.filter(s => s.id !== id);
+        localStorage.setItem('studySubjects', JSON.stringify(subjects));
+        renderSettings();
+        renderSubjects();
+      }
+    }
+
+    function deleteChapter(subId, chapId) {
+      const sub = subjects.find(s => s.id === subId);
+      if (sub) {
+        sub.chapters = sub.chapters.filter(c => c.id !== chapId);
+        localStorage.setItem('studySubjects', JSON.stringify(subjects));
+        renderSettings();
+        renderSubjects();
+      }
+    }
+
+    function deleteLink(id) {
+      links = links.filter(l => l.id !== id);
+      localStorage.setItem('studyLinks', JSON.stringify(links));
+      renderSettings();
+      renderLinks();
+    }
+
+    // --- Todo List Logic ---
+    function renderTodos() {
+      const container = document.getElementById('todoTracker');
+      container.innerHTML = '';
+      
+      const col = document.createElement('div');
+      col.className = 'subject-col';
+      
+      const title = document.createElement('div');
+      title.className = 'subject-title';
+      title.innerText = 'TO DO';
+      col.appendChild(title);
+
+      const list = document.createElement('div');
+      list.className = 'chapter-list no-scrollbar';
+      list.id = 'todo-list';
+
+      todos.forEach(todo => {
+        const item = document.createElement('div');
+        item.className = 'chapter-item';
+        item.innerHTML = `
+          <span>${todo.text}</span>
+          <input type="checkbox" onchange="completeTodo(${todo.id})">
+        `;
+        list.appendChild(item);
+      });
+      
+      col.appendChild(list);
+
+      const addBtn = document.createElement('button');
+      addBtn.className = 'add-chapter-btn';
+      addBtn.id = 'add-todo-btn';
+      addBtn.innerText = '[+]';
+      addBtn.onclick = addTodoInput;
+      col.appendChild(addBtn);
+
+      container.appendChild(col);
+    }
+
+    function addTodoInput() {
+      const list = document.getElementById('todo-list');
+      document.getElementById('add-todo-btn').style.display = 'none';
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'inline-input';
+      input.placeholder = 'task...';
+      list.appendChild(input);
+      list.scrollTop = list.scrollHeight;
+      input.focus();
+
+      let saved = false;
+      function save() {
+        if (saved) return; saved = true;
+        const val = input.value.trim();
+        if (val) {
+          todos.push({ id: Date.now(), text: val });
+          localStorage.setItem('studyTodos', JSON.stringify(todos));
+        }
+        renderTodos();
+      }
+      input.addEventListener('blur', save);
+      input.addEventListener('keypress', e => { if (e.key === 'Enter') { e.stopPropagation(); input.blur(); } });
+    }
+
+    function completeTodo(id) {
+      const idx = todos.findIndex(t => t.id === id);
+      if (idx > -1) {
+        const text = todos[idx].text;
+        todos.splice(idx, 1);
+        localStorage.setItem('studyTodos', JSON.stringify(todos));
+        addEntry(text, '');
+        renderTodos();
+      }
+    }
+
+    // --- Subject & Chapter Tracker Logic ---
+    function renderSubjects() {
+      const trackerDiv = document.getElementById('subjectTracker');
+      trackerDiv.innerHTML = '';
+
+      subjects.forEach(sub => {
+        const subCol = document.createElement('div');
+        subCol.className = 'subject-col';
+        subCol.id = `sub-${sub.id}`;
+        
+        const title = document.createElement('div');
+        title.className = 'subject-title';
+        title.innerText = sub.name;
+        subCol.appendChild(title);
+
+        const chapList = document.createElement('div');
+        chapList.className = 'chapter-list no-scrollbar';
+        chapList.id = `chap-list-${sub.id}`;
+
+        sub.chapters.forEach(chap => {
+          const chapItem = document.createElement('div');
+          chapItem.className = 'chapter-item';
+          const isChecked = chap.completed ? 'checked' : '';
+          const textStyle = chap.completed ? 'text-decoration: line-through; opacity: 0.5;' : '';
+          
+          chapItem.innerHTML = `
+            <span style="${textStyle}">${chap.name}</span>
+            <input type="checkbox" ${isChecked} onchange="toggleChapter(${sub.id}, ${chap.id})">
+          `;
+          chapList.appendChild(chapItem);
+        });
+        
+        subCol.appendChild(chapList);
+
+        const addBtn = document.createElement('button');
+        addBtn.className = 'add-chapter-btn';
+        addBtn.innerText = '[+]';
+        addBtn.onclick = () => addChapterInput(sub.id);
+        subCol.appendChild(addBtn);
+
+        trackerDiv.appendChild(subCol);
+      });
+
+      const addSubBtn = document.createElement('button');
+      addSubBtn.className = 'add-subject-btn';
+      addSubBtn.innerText = '+';
+      addSubBtn.onclick = addSubjectInput;
+      trackerDiv.appendChild(addSubBtn);
+    }
+
+    function addSubjectInput() {
+      const trackerDiv = document.getElementById('subjectTracker');
+      const addBtn = document.querySelector('.add-subject-btn');
+      if(addBtn) addBtn.style.display = 'none';
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'inline-input';
+      input.style.width = '140px';
+      input.style.alignSelf = 'center';
+      input.placeholder = 'subject...';
+      trackerDiv.appendChild(input);
+      input.focus();
+
+      let saved = false;
+      function save() {
+        if (saved) return; saved = true;
+        const val = input.value.trim();
+        if (val) {
+          subjects.push({ id: Date.now(), name: val, chapters: [] });
+          localStorage.setItem('studySubjects', JSON.stringify(subjects));
+        }
+        renderSubjects();
+      }
+      input.addEventListener('blur', save);
+      input.addEventListener('keypress', e => { if (e.key === 'Enter') { e.stopPropagation(); input.blur(); } });
+    }
+
+    function addChapterInput(subId) {
+      const subCol = document.getElementById(`sub-${subId}`);
+      const list = document.getElementById(`chap-list-${subId}`);
+      const btn = subCol.querySelector('.add-chapter-btn');
+      if(btn) btn.style.display = 'none';
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'inline-input';
+      input.placeholder = 'chapter...';
+      list.appendChild(input);
+      list.scrollTop = list.scrollHeight;
+      input.focus();
+
+      let saved = false;
+      function save() {
+        if (saved) return; saved = true;
+        const val = input.value.trim();
+        if (val) {
+          const sub = subjects.find(s => s.id === subId);
+          sub.chapters.push({ id: Date.now(), name: val, completed: false });
+          localStorage.setItem('studySubjects', JSON.stringify(subjects));
+        }
+        renderSubjects();
+      }
+      input.addEventListener('blur', save);
+      input.addEventListener('keypress', e => { if (e.key === 'Enter') { e.stopPropagation(); input.blur(); } });
+    }
+
+    function toggleChapter(subId, chapId) {
+      const sub = subjects.find(s => s.id === subId);
+      if (!sub) return;
+      const chap = sub.chapters.find(c => c.id === chapId);
+      if (!chap) return;
+      
+      chap.completed = !chap.completed;
+      localStorage.setItem('studySubjects', JSON.stringify(subjects));
+      renderSubjects();
+    }
+
+    // --- Links Logic ---
+    function renderLinks() {
+      const container = document.getElementById('linksTracker');
+      container.innerHTML = '';
+
+      const col = document.createElement('div');
+      col.className = 'subject-col';
+      col.style.minWidth = '95px';
+      col.style.maxWidth = '105px';
+
+      const title = document.createElement('div');
+      title.className = 'subject-title';
+      title.innerText = 'LINKS';
+      col.appendChild(title);
+
+      const list = document.createElement('div');
+      list.className = 'chapter-list no-scrollbar';
+      list.id = 'links-list';
+
+      links.forEach(link => {
+        const item = document.createElement('div');
+        item.className = 'chapter-item';
+        item.innerHTML = `
+          <a href="${link.url}" target="_blank" style="color:#bbb; text-decoration:none; word-break:break-all;" onmouseover="this.style.color='#e0e0e0'" onmouseout="this.style.color='#bbb'">${link.name}</a>
+        `;
+        list.appendChild(item);
+      });
+
+      col.appendChild(list);
+
+      const addBtn = document.createElement('button');
+      addBtn.className = 'add-chapter-btn';
+      addBtn.id = 'add-link-btn';
+      addBtn.innerText = '[+]';
+      addBtn.onclick = addLinkInput;
+      col.appendChild(addBtn);
+
+      container.appendChild(col);
+    }
+
+    function addLinkInput() {
+      const list = document.getElementById('links-list');
+      document.getElementById('add-link-btn').style.display = 'none';
+
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.className = 'inline-input';
+      nameInput.placeholder = 'name...';
+      list.appendChild(nameInput);
+
+      const urlInput = document.createElement('input');
+      urlInput.type = 'text';
+      urlInput.className = 'inline-input';
+      urlInput.placeholder = 'url...';
+      list.appendChild(urlInput);
+
+      list.scrollTop = list.scrollHeight;
+      nameInput.focus();
+
+      let saved = false;
+      function save() {
+        if (saved) return; saved = true;
+        const name = nameInput.value.trim();
+        const url = urlInput.value.trim();
+        if (name && url) {
+          const finalUrl = url.startsWith('http') ? url : 'https://' + url;
+          links.push({ id: Date.now(), name, url: finalUrl });
+          localStorage.setItem('studyLinks', JSON.stringify(links));
+        }
+        renderLinks();
+      }
+      nameInput.addEventListener('keypress', e => { if (e.key === 'Enter') { e.stopPropagation(); urlInput.focus(); } });
+      urlInput.addEventListener('blur', save);
+      urlInput.addEventListener('keypress', e => { if (e.key === 'Enter') { e.stopPropagation(); urlInput.blur(); } });
+    }
+
+    // --- Exam Countdown Logic ---
+    let exams = JSON.parse(localStorage.getItem('studyExams')) || [];
+
+    function renderExams() {
+      const container = document.getElementById('examTracker');
+      container.innerHTML = '';
+
+      const wrapper = document.createElement('div');
+      wrapper.style.cssText = 'display:flex; flex-wrap:wrap; gap:10px; margin-top:0; margin-bottom:0;';
+
+      const today = new Date();
+      today.setHours(0,0,0,0);
+
+      exams.forEach(exam => {
+        const examDate = new Date(exam.date);
+        examDate.setHours(0,0,0,0);
+        const diff = Math.ceil((examDate - today) / (1000 * 60 * 60 * 24));
+        const diffText = diff > 0 ? `${diff}` : diff === 0 ? '0' : `-${Math.abs(diff)}`;
+        const label = diff > 0 ? 'days left' : diff === 0 ? 'today' : 'days ago';
+        const col = diff <= 7 ? '#ff5555' : diff <= 30 ? '#f0a500' : '#888';
+
+        const card = document.createElement('div');
+        card.style.cssText = `
+          border: 1px dashed #333;
+          padding: 14px 18px;
+          min-width: 130px;
+          max-width: 170px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          gap: 6px;
+          position: relative;
+          background: #121212;
+        `;
+        card.innerHTML = `
+          <span onclick="deleteExam(${exam.id})" style="position:absolute;top:6px;right:8px;color:#333;cursor:pointer;font-size:13px;line-height:1;" onmouseover="this.style.color='#ff5555'" onmouseout="this.style.color='#333'">×</span>
+          <div style="color:#888; font-size:0.75em; text-transform:uppercase; letter-spacing:0.05em; font-family:monospace;">${exam.name}</div>
+          <div style="color:${col}; font-size:2.2em; font-weight:bold; font-family:monospace; line-height:1;">${diffText}</div>
+          <div style="color:#555; font-size:0.72em; font-family:monospace;">${label}</div>
+        `;
+        wrapper.appendChild(card);
+      });
+
+      // Add new exam card
+      const addCard = document.createElement('div');
+      addCard.id = 'add-exam-card';
+      addCard.style.cssText = `
+        border: 1px dashed #2a2a2a;
+        padding: 14px 18px;
+        min-width: 130px;
+        max-width: 170px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: #333;
+        font-family: monospace;
+        font-size: 20px;
+        background: #121212;
+      `;
+      addCard.innerText = '+';
+      addCard.onmouseover = () => { addCard.style.color = '#888'; addCard.style.borderColor = '#444'; };
+      addCard.onmouseout = () => { addCard.style.color = '#333'; addCard.style.borderColor = '#2a2a2a'; };
+      addCard.onclick = addExamInput;
+      wrapper.appendChild(addCard);
+
+      container.appendChild(wrapper);
+    }
+
+    function addExamInput() {
+      const addCard = document.getElementById('add-exam-card');
+      addCard.style.flexDirection = 'column';
+      addCard.style.alignItems = 'stretch';
+      addCard.style.gap = '6px';
+      addCard.style.cursor = 'default';
+      addCard.innerHTML = '';
+      addCard.onmouseover = null;
+      addCard.onmouseout = null;
+      addCard.onclick = null;
+
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.className = 'inline-input';
+      nameInput.placeholder = 'exam name...';
+      addCard.appendChild(nameInput);
+
+      const dateInput = document.createElement('input');
+      dateInput.type = 'date';
+      dateInput.className = 'inline-input';
+      dateInput.style.colorScheme = 'dark';
+      addCard.appendChild(dateInput);
+
+      nameInput.focus();
+
+      let saved = false;
+      function save() {
+        if (saved) return; saved = true;
+        const name = nameInput.value.trim();
+        const date = dateInput.value;
+        if (name && date) {
+          exams.push({ id: Date.now(), name, date });
+          localStorage.setItem('studyExams', JSON.stringify(exams));
+        }
+        renderExams();
+      }
+      nameInput.addEventListener('keypress', e => { if (e.key === 'Enter') { e.stopPropagation(); dateInput.focus(); } });
+      dateInput.addEventListener('change', () => setTimeout(save, 200));
+      dateInput.addEventListener('blur', save);
+    }
+
+    function deleteExam(id) {
+      exams = exams.filter(e => e.id !== id);
+      localStorage.setItem('studyExams', JSON.stringify(exams));
+      renderExams();
+    }
+
+    // --- Global Events ---
+    document.addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        if (document.activeElement.id === 'topic' || document.activeElement.id === 'time') {
+          addEntry();
+        }
+      }
+      // Press 'i' when not typing to toggle IOQM
+      if (e.key === 'i' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+        toggleIoqmPanel();
+      }
+    });
+
+    // Boot — instant from localStorage
+    render();
+    renderTodos();
+    renderLinks();
+    renderSubjects();
+    renderExams();
+    // Background cloud sync
+    cloudPullIfNewer();
+  </script>
+
+  <script>
+    // ---- IOQM FLOATING PANEL ----
+    let ioqmInitialized = false;
+
+    function toggleIoqmPanel() {
+      const panel = document.getElementById('ioqm-panel');
+      const isOpen = panel.style.display === 'flex';
+      panel.style.display = isOpen ? 'none' : 'flex';
+      document.body.style.overflow = isOpen ? '' : 'hidden';
+      if (!isOpen) {
+        if (!ioqmInitialized) {
+          ioqmInitialized = true;
+          ioqmInit();
+        } else {
+          ioqmScrollToLastChapter();
+        }
+      }
+    }
+
+    function ioqmShowSettings() {
+      const m = document.getElementById('ioqm-settings-modal');
+      m.style.display = 'flex';
+    }
+    function ioqmHideSettings() {
+      document.getElementById('ioqm-settings-modal').style.display = 'none';
+    }
+    function ioqmChangeTheme() {
+      document.body.classList.toggle('dark-mode');
+      const isDark = document.body.classList.contains('dark-mode');
+      localStorage.setItem('ioqmDarkMode', isDark ? 'enabled' : 'disabled');
+    }
+    function ioqmExportData() {
+      let csv = "Chapter,Lecture,Video,DPP,Test,Module,Revision\n";
+      ioqmChapters.forEach(ch => {
+        ch.lectures.forEach(lec => {
+          csv += `"${ch.name}","Lecture ${lec.id}: ${lec.name}",`;
+          csv += `${lec.video?'Yes':'No'},${lec.dpp?'Yes':'No'},`;
+          csv += `${lec.hasTest?(lec.testDone?'Yes':'No'):'N/A'},`;
+          csv += `${lec.hasTest?(lec.moduleDone?'Yes':'No'):'N/A'},`;
+          csv += `${lec.hasTest?(lec.revisionDone?'Yes':'No'):'N/A'}\n`;
+        });
+      });
+      const blob = new Blob([csv], {type:'text/csv'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'ioqm_progress.csv';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      ioqmHideSettings();
+    }
+    function ioqmResetData() {
+      if (confirm('Reset all progress? This cannot be undone!')) {
+        ioqmChapters = JSON.parse(JSON.stringify(ioqmDefaultChapters));
+        ioqmStreak = 0; ioqmLastStudyDate = null;
+        ioqmSaveData(); ioqmHideSettings(); ioqmRender();
+      }
+    }
+
+    function ioqmShowAnalytics() {
+      const modal = document.getElementById('ioqm-analytics-modal');
+      const content = document.getElementById('ioqm-analytics-content');
+      let totalTasks=0, completedTasks=0;
+      let totalLectures=0, completedLectures=0;
+      ioqmChapters.forEach(ch => {
+        totalLectures += ch.lectures.length;
+        completedLectures += ioqmGetCompletedLectures(ch);
+        ch.lectures.forEach(l => {
+          totalTasks+=2; if(l.video) completedTasks++; if(l.dpp) completedTasks++;
+          if(l.hasTest){totalTasks+=3;if(l.testDone)completedTasks++;if(l.moduleDone)completedTasks++;if(l.revisionDone)completedTasks++;}
+        });
+      });
+      const progress = totalTasks > 0 ? ((completedTasks/totalTasks)*100).toFixed(2) : 0;
+      const completedChapters = ioqmChapters.filter(ch => ch.lectures.every(l => ioqmIsLectureFullyComplete(l))).length;
+      const today = new Date();
+      const exam = new Date(IOQM_EXAM_DATE);
+      const daysRemaining = Math.max(0, Math.ceil((exam - today)/(1000*60*60*24)));
+
+      content.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px;">
+          ${[['Overall Progress', progress+'%','#3b82f6'],['Streak',ioqmStreak+' 🔥','#f59e0b'],['Chapters',completedChapters+'/'+ioqmChapters.length,'#10b981'],['Lectures',completedLectures+'/'+totalLectures,'#8b5cf6']].map(([label,val,color])=>`
+            <div style="border:1px solid #e5e7eb;border-radius:10px;padding:16px;text-align:center;">
+              <div style="font-size:12px;color:#6b7280;margin-bottom:4px;">${label}</div>
+              <div style="font-size:22px;font-weight:700;color:${color};">${val}</div>
+            </div>`).join('')}
+        </div>
+        <h3 style="font-weight:700;color:#111827;margin-bottom:12px;">Chapter-wise Breakdown</h3>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:24px;">
+          ${ioqmChapters.map((ch,i) => {
+            const cp = ioqmGetChapterProgress(ch);
+            const ld = ioqmGetCompletedLectures(ch);
+            const colors=['#93C5FD','#BFDBFE','#DBEAFE','#FCA5A5','#FECACA','#FED7AA','#FDE68A','#FEF08A','#D9F99D','#BBF7D0','#A7F3D0','#99F6E4','#A5F3FC','#BAE6FD','#C7D2FE','#DDD6FE','#E9D5FF'];
+            const color = colors[i % colors.length];
+            return `<div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <div style="width:10px;height:10px;border-radius:50%;background:${color};flex-shrink:0;"></div>
+                <div style="font-size:13px;font-weight:600;color:#111827;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${ch.name}</div>
+                <div style="font-size:15px;font-weight:700;color:#111827;">${cp}%</div>
+              </div>
+              <div style="font-size:11px;color:#6b7280;margin-bottom:6px;">${ld}/${ch.lectures.length} lectures</div>
+              <div style="background:#e5e7eb;border-radius:99px;height:6px;">
+                <div style="height:6px;border-radius:99px;background:${color};width:${cp}%;transition:width 0.5s;"></div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="background:linear-gradient(to right,#eff6ff,#eef2ff);border:1px solid #bfdbfe;border-radius:10px;padding:20px;">
+          <div style="font-weight:700;color:#111827;margin-bottom:10px;">📊 Study Insights</div>
+          <div style="color:#374151;font-size:14px;line-height:2;">
+            <div><span style="font-weight:600;color:#2563eb;">${totalLectures - completedLectures}</span> lectures remaining</div>
+            <div>Recommended pace: <span style="font-weight:600;color:#2563eb;">${daysRemaining > 0 ? ((totalLectures-completedLectures)/daysRemaining).toFixed(1) : 0}</span> lectures/day</div>
+            <div>Days to exam: <span style="font-weight:600;color:#2563eb;">${daysRemaining}</span></div>
+            <div>Current streak: <span style="font-weight:600;color:#ea580c;">${ioqmStreak} day${ioqmStreak!==1?'s':''} 🔥</span></div>
+          </div>
+        </div>
+      `;
+      modal.style.display = 'flex';
+    }
+    function ioqmHideAnalytics() {
+      document.getElementById('ioqm-analytics-modal').style.display = 'none';
+    }
+
+    // IOQM data (scoped with ioqm_ prefix to avoid conflicts)
+    const ioqmDefaultChapters = [
+      { id:1, subject:"Mathematics", name:"Basic Mathematics", lectures:[
+        {id:1,name:"Basic Identities",video:false,dpp:false,notes:false},
+        {id:2,name:"Factorization, Simon's Favourite Factoring Technique",video:false,dpp:false,notes:false},
+        {id:3,name:"Doubt Class (Part-01)",video:false,dpp:false,notes:false},
+        {id:4,name:"Factorization (Part-02)",video:false,dpp:false,notes:false},
+        {id:5,name:"Basic Inequalities",video:false,dpp:false,notes:false},
+        {id:6,name:"Wavy Curve Method",video:false,dpp:false,notes:false},
+        {id:7,name:"Doubt Class (Part-02)",video:false,dpp:false,notes:false},
+        {id:8,name:"Inequalities",video:false,dpp:false,notes:false},
+        {id:9,name:"Irrational Inequalities",video:false,dpp:false,notes:false},
+        {id:10,name:"Irrational Inequalities (Part-02)",video:false,dpp:false,notes:false},
+        {id:11,name:"Modulus Function",video:false,dpp:false,notes:false},
+        {id:12,name:"Inequalities Involving Absolute Value",video:false,dpp:false,notes:false},
+        {id:13,name:"Factor Theorem and Remainder Theorem",video:false,dpp:false,notes:false},
+        {id:14,name:"Logarithms (Part-01)",video:false,dpp:false,notes:false},
+        {id:15,name:"Logarithms (Part-02)",video:false,dpp:false,notes:false},
+        {id:16,name:"Logarithms (Part-03)",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:2, subject:"Mathematics", name:"Number Theory (Part-01)", lectures:[
+        {id:1,name:"Divisibility, Tests of Divisibility",video:false,dpp:false,notes:false},
+        {id:2,name:"Division Algorithm",video:false,dpp:false,notes:false},
+        {id:3,name:"Euclidean Algorithm (Part-01)",video:false,dpp:false,notes:false},
+        {id:4,name:"Euclidean Algorithm (Part-02)",video:false,dpp:false,notes:false},
+        {id:5,name:"Fundamental Theorem of Arithmetic",video:false,dpp:false,notes:false},
+        {id:6,name:"GCD and LCM",video:false,dpp:false,notes:false},
+        {id:7,name:"Prime Number",video:false,dpp:false,notes:false},
+        {id:8,name:"Composite Numbers, Perfect Squares",video:false,dpp:false,notes:false},
+        {id:9,name:"Doubt Class",video:false,dpp:false,notes:false},
+        {id:10,name:"Modulus Functions",video:false,dpp:false,notes:false},
+        {id:11,name:"Modulus Functions (Part-02)",video:false,dpp:false,notes:false},
+        {id:12,name:"Miscellaneous Problems",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:3, subject:"Mathematics", name:"Number Theory (Part-02)", lectures:[
+        {id:1,name:"GIF, FPF",video:false,dpp:false,notes:false},
+        {id:2,name:"Number Theoretic Function (Part-01)",video:false,dpp:false,notes:false},
+        {id:3,name:"Number Theoretic Function (Part-02)",video:false,dpp:false,notes:false},
+        {id:4,name:"Miscellaneous Problems",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:4, subject:"Mathematics", name:"Number Theory (Part-03)", lectures:[
+        {id:1,name:"Base System, Congruences",video:false,dpp:false,notes:false},
+        {id:2,name:"Fermat Theorem, Wilson Theorem",video:false,dpp:false,notes:false},
+        {id:3,name:"Euler's Theorem",video:false,dpp:false,notes:false},
+        {id:4,name:"Chinese Remainder Theorem",video:false,dpp:false,notes:false},
+        {id:5,name:"Unit Digit and Last Two Digits",video:false,dpp:false,notes:false},
+        {id:6,name:"Diophantine Equation (Part-01)",video:false,dpp:false,notes:false},
+        {id:7,name:"Diophantine Equation (Part-02)",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:5, subject:"Mathematics", name:"Algebra – Polynomial & Quadratic Equation", lectures:[
+        {id:1,name:"Polynomials and its Types, Quadratic Polynomial",video:false,dpp:false,notes:false},
+        {id:2,name:"Equation vs Identity, Relation Between Roots",video:false,dpp:false,notes:false},
+        {id:3,name:"Symmetric Function of the Roots",video:false,dpp:false,notes:false},
+        {id:4,name:"Transformation of Equation",video:false,dpp:false,notes:false},
+        {id:5,name:"Rational Root Theorem, Integer Root Theorem",video:false,dpp:false,notes:false},
+        {id:6,name:"Irreducibility of Polynomials",video:false,dpp:false,notes:false},
+        {id:7,name:"Common Roots",video:false,dpp:false,notes:false},
+        {id:8,name:"Theory of Equations, Graph and Sign of Roots",video:false,dpp:false,notes:false},
+        {id:9,name:"Graph and Sign of Real Quadratic Expression",video:false,dpp:false,notes:false},
+        {id:10,name:"Range of Quadratic Expression",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:6, subject:"Mathematics", name:"Algebra – Sequence and Series", lectures:[
+        {id:1,name:"Introduction to Sequence and Series, AP",video:false,dpp:false,notes:false},
+        {id:2,name:"Properties of AP",video:false,dpp:false,notes:false},
+        {id:3,name:"Practice Session",video:false,dpp:false,notes:false},
+        {id:4,name:"Introduction to GP",video:false,dpp:false,notes:false},
+        {id:5,name:"Properties of GP, GM",video:false,dpp:false,notes:false},
+        {id:6,name:"Harmonic Progression, Harmonic Mean",video:false,dpp:false,notes:false},
+        {id:7,name:"Method of Difference, AGP",video:false,dpp:false,notes:false},
+        {id:8,name:"AGP, Telescoping Series",video:false,dpp:false,notes:false},
+        {id:9,name:"Relation Between AM, GM, HM",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:7, subject:"Mathematics", name:"Recurrence Relation", lectures:[
+        {id:1,name:"Recurrence Relation (Part-01)",video:false,dpp:false,notes:false},
+        {id:2,name:"Recurrence Relation (Part-02)",video:false,dpp:false,notes:false},
+        {id:3,name:"Recurrence Relation (Part-03)",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:8, subject:"Mathematics", name:"Inequalities", lectures:[
+        {id:1,name:"Basics of Inequalities",video:false,dpp:false,notes:false},
+        {id:2,name:"AM-GM Inequality",video:false,dpp:false,notes:false},
+        {id:3,name:"Mean Inequality",video:false,dpp:false,notes:false},
+        {id:4,name:"Cauchy Schwarz Inequality",video:false,dpp:false,notes:false},
+        {id:5,name:"Titu's Lemma",video:false,dpp:false,notes:false},
+        {id:6,name:"Rearrangement Inequality",video:false,dpp:false,notes:false},
+        {id:7,name:"Jensen Inequality, Chebyshev Inequality",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:9, subject:"Mathematics", name:"Combinatorics (Part-01)", lectures:[
+        {id:1,name:"Fundamental Counting Principle",video:false,dpp:false,notes:false},
+        {id:2,name:"Permutation",video:false,dpp:false,notes:false},
+        {id:3,name:"Combination",video:false,dpp:false,notes:false},
+        {id:4,name:"Circular Permutation",video:false,dpp:false,notes:false},
+        {id:5,name:"Binomial Theorem",video:false,dpp:false,notes:false},
+        {id:6,name:"Pascal's Triangle",video:false,dpp:false,notes:false},
+        {id:7,name:"Multinomial Theorem",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:10, subject:"Mathematics", name:"Combinatorics (Part-02)", lectures:[
+        {id:1,name:"Pigeonhole Principle",video:false,dpp:false,notes:false},
+        {id:2,name:"Inclusion-Exclusion Principle",video:false,dpp:false,notes:false},
+        {id:3,name:"Derangements",video:false,dpp:false,notes:false},
+        {id:4,name:"Generating Functions",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:11, subject:"Mathematics", name:"Graph Theory", lectures:[
+        {id:1,name:"Introduction to Graphs",video:false,dpp:false,notes:false},
+        {id:2,name:"Trees and Spanning Trees",video:false,dpp:false,notes:false},
+        {id:3,name:"Eulerian and Hamiltonian Paths",video:false,dpp:false,notes:false},
+        {id:4,name:"Graph Coloring",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:12, subject:"Mathematics", name:"Geometry (Part-01)", lectures:[
+        {id:1,name:"Basic Geometry, Triangles",video:false,dpp:false,notes:false},
+        {id:2,name:"Congruence and Similarity",video:false,dpp:false,notes:false},
+        {id:3,name:"Circles",video:false,dpp:false,notes:false},
+        {id:4,name:"Tangent Lines",video:false,dpp:false,notes:false},
+        {id:5,name:"Power of a Point",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:13, subject:"Mathematics", name:"Geometry (Part-02)", lectures:[
+        {id:1,name:"Trigonometry Basics",video:false,dpp:false,notes:false},
+        {id:2,name:"Sine and Cosine Rule",video:false,dpp:false,notes:false},
+        {id:3,name:"Area of Triangle",video:false,dpp:false,notes:false},
+        {id:4,name:"Ceva's Theorem, Menelaus Theorem",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:14, subject:"Mathematics", name:"Geometry (Part-03)", lectures:[
+        {id:1,name:"Coordinate Geometry",video:false,dpp:false,notes:false},
+        {id:2,name:"Vectors in Geometry",video:false,dpp:false,notes:false},
+        {id:3,name:"Inversion",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:15, subject:"Mathematics", name:"Functional Equations", lectures:[
+        {id:1,name:"Introduction to Functional Equations",video:false,dpp:false,notes:false},
+        {id:2,name:"Cauchy's Functional Equation",video:false,dpp:false,notes:false},
+        {id:3,name:"Jensen's Functional Equation",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:16, subject:"Mathematics", name:"Miscellaneous Topics", lectures:[
+        {id:1,name:"Olympiad Problem Solving Strategies",video:false,dpp:false,notes:false},
+        {id:2,name:"Mixed Problems Session",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]},
+      { id:17, subject:"Mathematics", name:"Extra / Special Sessions", lectures:[
+        {id:1,name:"Charcha Session",video:false,dpp:false,notes:false},
+        {id:2,name:"Extra Session – Combinatorics",video:false,dpp:false,notes:false,hasTest:true,testDone:false,moduleDone:false,revisionDone:false}
+      ]}
+    ];
+
+    let ioqmChapters = [];
+    let ioqmStreak = 0;
+    let ioqmLastStudyDate = null;
+    const IOQM_KEY = 'ioqm_data_local';
+    const IOQM_EXAM_DATE = '2026-09-01';
+
+    function ioqmLoadData() {
+      const saved = localStorage.getItem(IOQM_KEY);
+      if (saved) {
+        try {
+          const data = JSON.parse(saved);
+          ioqmChapters = ioqmDefaultChapters.map(def => {
+            const saved = data.chapters?.find(c => c.id === def.id);
+            if (saved) {
+              return { ...def, lectures: def.lectures.map(dl => {
+                const sl = saved.lectures?.find(l => l.id === dl.id);
+                return sl ? { ...dl, ...sl } : dl;
+              })};
+            }
+            return JSON.parse(JSON.stringify(def));
+          });
+          ioqmStreak = data.streak || 0;
+          ioqmLastStudyDate = data.lastStudyDate || null;
+          ioqmLastActiveChapterId = data.lastActiveChapterId || null;
+        } catch(e) {
+          ioqmChapters = JSON.parse(JSON.stringify(ioqmDefaultChapters));
+        }
+      } else {
+        ioqmChapters = JSON.parse(JSON.stringify(ioqmDefaultChapters));
+      }
+    }
+
+    let ioqmLastActiveChapterId = null;
+
+    function ioqmSaveData() {
+      localStorage.setItem(IOQM_KEY, JSON.stringify({
+        chapters: ioqmChapters,
+        streak: ioqmStreak,
+        lastStudyDate: ioqmLastStudyDate,
+        lastUpdated: new Date().toISOString(),
+        lastActiveChapterId: ioqmLastActiveChapterId
+      }));
+    }
+
+    function ioqmUpdateStreak() {
+      const today = new Date();
+      const todayStr = today.toDateString();
+      if (ioqmLastStudyDate !== todayStr) {
+        if (ioqmLastStudyDate) {
+          const last = new Date(ioqmLastStudyDate);
+          const yesterday = new Date(today);
+          yesterday.setDate(yesterday.getDate() - 1);
+          ioqmStreak = last.toDateString() === yesterday.toDateString() ? ioqmStreak + 1 : 1;
+        } else {
+          ioqmStreak = 1;
+        }
+        ioqmLastStudyDate = todayStr;
+      }
+    }
+
+    function ioqmIsLectureFullyComplete(lec) {
+      return lec.video && lec.dpp && (!lec.hasTest || (lec.testDone && lec.moduleDone && lec.revisionDone));
+    }
+
+    function ioqmGetChapterProgress(ch) {
+      let total = 0, done = 0;
+      ch.lectures.forEach(l => {
+        total += 2; if(l.video) done++; if(l.dpp) done++;
+        if(l.hasTest) { total+=3; if(l.testDone) done++; if(l.moduleDone) done++; if(l.revisionDone) done++; }
+      });
+      return total > 0 ? ((done/total)*100).toFixed(2) : 0;
+    }
+
+    // --- IOQM <-> Main Log sync helpers ---
+    function ioqmBuildLogTopic(ch, lec) {
+      return `IOQM -- ${ch.name} -- lec -- ${lec.name}`;
+    }
+
+    function ioqmFindLogEntry(ch, lec) {
+      const topic = ioqmBuildLogTopic(ch, lec);
+      return entries.find(e => e.topic.toLowerCase() === topic.toLowerCase());
+    }
+
+    function ioqmAddToLog(ch, lec) {
+      if (ioqmFindLogEntry(ch, lec)) return;
+      const topic = ioqmBuildLogTopic(ch, lec);
+      const date = new Date().toLocaleString();
+      const id = Date.now() + Math.random();
+      entries.push({ topic, time: '', date, id, hasDpp: true, dppCompleted: false });
+      localStorage.setItem('studyLog', JSON.stringify(entries));
+      render();
+    }
+
+    function ioqmMarkDppInLog(ch, lec, completed) {
+      const entry = ioqmFindLogEntry(ch, lec);
+      if (entry) {
+        entry.dppCompleted = completed;
+        localStorage.setItem('studyLog', JSON.stringify(entries));
+        render();
+      }
+    }
+
+    function ioqmGetCompletedLectures(ch) {
+      return ch.lectures.filter(l => ioqmIsLectureFullyComplete(l)).length;
+    }
+
+    function ioqmCreateConfetti(multiplier = 1) {
+      const colors = ['#10B981','#3B82F6','#F59E0B','#EF4444','#8B5CF6','#EC4899'];
+      for (let i = 0; i < 50 * multiplier; i++) {
+        setTimeout(() => {
+          const c = document.createElement('div');
+          c.className = 'ioqm-confetti';
+          c.style.cssText = `left:${Math.random()*100}%;top:-10px;background-color:${colors[Math.floor(Math.random()*colors.length)]};border-radius:${Math.random()>0.5?'50%':'0'};animation:ioqm-confetti-fall ${2+Math.random()}s linear forwards;`;
+          document.body.appendChild(c);
+          setTimeout(() => c.remove(), 4000);
+        }, i * (multiplier > 1 ? 10 : 20));
+      }
+    }
+
+    function ioqmRender() {
+      let totalTasks=0, completedTasks=0;
+      ioqmChapters.forEach(ch => ch.lectures.forEach(l => {
+        totalTasks+=2; if(l.video) completedTasks++; if(l.dpp) completedTasks++;
+        if(l.hasTest){totalTasks+=3;if(l.testDone)completedTasks++;if(l.moduleDone)completedTasks++;if(l.revisionDone)completedTasks++;}
+      }));
+      const progress = totalTasks > 0 ? ((completedTasks/totalTasks)*100).toFixed(2) : 0;
+      const completedChapters = ioqmChapters.filter(ch => ch.lectures.every(l => ioqmIsLectureFullyComplete(l))).length;
+      const totalLectures = ioqmChapters.reduce((s,ch)=>s+ch.lectures.length,0);
+      const completedLectures = ioqmChapters.reduce((s,ch)=>s+ioqmGetCompletedLectures(ch),0);
+
+      const chk = (v) => v
+        ? `<svg class="text-green-500" width="26" height="26" viewBox="0 0 24 24" fill="currentColor" stroke="white" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4" stroke="white" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+        : `<svg class="text-gray-300" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>`;
+
+      document.getElementById('ioqm-app').innerHTML = `
+        <div class="max-w-full">
+          <!-- Stats bar -->
+          <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-3 mb-4">
+            <div class="grid grid-cols-4 gap-3 text-center">
+              <div><div class="text-xs text-gray-600 mb-1">Progress</div><div class="text-xl font-bold text-gray-900">${progress}%</div></div>
+              <div><div class="text-xs text-gray-600 mb-1">Streak</div><div class="text-xl font-bold text-gray-900">${ioqmStreak} 🔥</div></div>
+              <div><div class="text-xs text-gray-600 mb-1">Chapters</div><div class="text-xl font-bold text-gray-900">${completedChapters}/${ioqmChapters.length}</div></div>
+              <div><div class="text-xs text-gray-600 mb-1">Lectures</div><div class="text-xl font-bold text-gray-900">${completedLectures}/${totalLectures}</div></div>
+            </div>
+          </div>
+          <!-- Chapters -->
+          ${ioqmChapters.map(ch => {
+            const cp = ioqmGetChapterProgress(ch);
+            const ld = ioqmGetCompletedLectures(ch);
+            return `
+              <div class="mb-4 rounded-lg shadow-sm overflow-hidden border border-gray-200 bg-white" id="ioqm-ch-${ch.id}">
+                <div class="bg-gray-900 text-white p-3">
+                  <h2 class="text-base font-bold">${ch.subject} – ${ch.name}</h2>
+                  <p class="text-sm text-gray-300">${ld}/${ch.lectures.length} Lectures • ${cp}% Complete</p>
+                </div>
+                <div class="overflow-x-auto">
+                  <table class="w-full">
+                    <thead class="bg-gray-100 border-b border-gray-200">
+                      <tr>
+                        <th class="px-3 py-2 text-left text-xs font-semibold text-gray-700">Lecture</th>
+                        <th class="px-2 py-2 text-center text-xs font-semibold text-gray-700">Video</th>
+                        <th class="px-2 py-2 text-center text-xs font-semibold text-gray-700">DPP</th>
+                        <th class="px-2 py-2 text-center text-xs font-semibold text-gray-700">Test</th>
+                        <th class="px-2 py-2 text-center text-xs font-semibold text-gray-700">Module</th>
+                        <th class="px-2 py-2 text-center text-xs font-semibold text-gray-700">Revision</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${ch.lectures.map(lec => {
+                        const basicDone = lec.video && lec.dpp;
+                        const addDone = lec.hasTest && lec.testDone && lec.moduleDone && lec.revisionDone;
+                        return `
+                          <tr class="border-b border-gray-100 ${basicDone ? 'bg-green-50' : 'hover:bg-gray-50'}" ondblclick="ioqmCompleteBasic(${ch.id},${lec.id})" style="cursor:pointer;" title="Double-click to complete Video & DPP">
+                            <td class="px-3 py-2 text-xs font-medium text-gray-900">Lecture ${lec.id}: ${lec.name}</td>
+                            <td class="px-2 py-2 text-center"><button onclick="ioqmToggle(${ch.id},${lec.id},'video')" class="hover:scale-110 inline-flex transition-transform">${chk(lec.video)}</button></td>
+                            <td class="px-2 py-2 text-center"><button onclick="ioqmToggle(${ch.id},${lec.id},'dpp')" class="hover:scale-110 inline-flex transition-transform">${chk(lec.dpp)}</button></td>
+                            <td class="px-2 py-2 text-center" colspan="3">${!lec.hasTest ? '<span class="text-gray-400 text-xs">-</span>' : ''}</td>
+                          </tr>
+                          ${lec.hasTest ? `
+                          <tr class="border-b border-gray-100 ${addDone ? 'bg-green-50' : 'hover:bg-gray-50'}" ondblclick="ioqmCompleteAdditional(${ch.id},${lec.id})" style="cursor:pointer;" title="Double-click to complete Test, Module, Revision">
+                            <td class="px-3 py-2 pl-10 text-xs font-medium text-gray-500 italic">└─ Additional Tasks</td>
+                            <td colspan="2"></td>
+                            <td class="px-2 py-2 text-center"><button onclick="ioqmToggle(${ch.id},${lec.id},'testDone')" class="hover:scale-110 inline-flex transition-transform">${chk(lec.testDone)}</button></td>
+                            <td class="px-2 py-2 text-center"><button onclick="ioqmToggle(${ch.id},${lec.id},'moduleDone')" class="hover:scale-110 inline-flex transition-transform">${chk(lec.moduleDone)}</button></td>
+                            <td class="px-2 py-2 text-center"><button onclick="ioqmToggle(${ch.id},${lec.id},'revisionDone')" class="hover:scale-110 inline-flex transition-transform">${chk(lec.revisionDone)}</button></td>
+                          </tr>
+                          ` : ''}
+                        `;
+                      }).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function ioqmScrollToLastChapter() {
+      if (!ioqmLastActiveChapterId) return;
+      // Small delay to let DOM settle after render
+      setTimeout(() => {
+        const el = document.getElementById('ioqm-ch-' + ioqmLastActiveChapterId);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 80);
+    }
+
+    function ioqmToggle(chId, lecId, taskType) {
+      const ch = ioqmChapters.find(c => c.id === chId);
+      const lec = ch.lectures.find(l => l.id === lecId);
+      const wasBasicDone = lec.video && lec.dpp;
+      const wasChapterDone = ch.lectures.every(l => ioqmIsLectureFullyComplete(l));
+      lec[taskType] = !lec[taskType];
+      if (lec[taskType]) ioqmUpdateStreak();
+
+      // Remember which chapter was last interacted with
+      ioqmLastActiveChapterId = chId;
+
+      // Sync with main log
+      if (taskType === 'video') {
+        if (lec.video) ioqmAddToLog(ch, lec);
+      }
+      if (taskType === 'dpp') {
+        ioqmMarkDppInLog(ch, lec, lec.dpp);
+      }
+
+      ioqmSaveData();
+      ioqmRender();
+      ioqmScrollToLastChapter();
+      const isBasicNowDone = lec.video && lec.dpp;
+      if (!wasBasicDone && isBasicNowDone) {
+        const isChapterNowDone = ch.lectures.every(l => ioqmIsLectureFullyComplete(l));
+        ioqmCreateConfetti(!wasChapterDone && isChapterNowDone ? 10 : 1);
+      }
+    }
+
+    function ioqmCompleteBasic(chId, lecId) {
+      const ch = ioqmChapters.find(c => c.id === chId);
+      const lec = ch.lectures.find(l => l.id === lecId);
+      const was = ioqmIsLectureFullyComplete(lec);
+      const wasChDone = ch.lectures.every(l => ioqmIsLectureFullyComplete(l));
+      lec.video = lec.dpp = true;
+      ioqmUpdateStreak();
+      ioqmLastActiveChapterId = chId;
+      // Sync with main log
+      ioqmAddToLog(ch, lec);
+      ioqmMarkDppInLog(ch, lec, true);
+      ioqmSaveData();
+      ioqmRender();
+      ioqmScrollToLastChapter();
+      if (!was) {
+        const isChNow = ch.lectures.every(l => ioqmIsLectureFullyComplete(l));
+        ioqmCreateConfetti(!wasChDone && isChNow ? 10 : 1);
+      }
+    }
+
+    function ioqmCompleteAdditional(chId, lecId) {
+      const ch = ioqmChapters.find(c => c.id === chId);
+      const lec = ch.lectures.find(l => l.id === lecId);
+      if (!lec.hasTest) return;
+      const wasChDone = ch.lectures.every(l => ioqmIsLectureFullyComplete(l));
+      lec.testDone = lec.moduleDone = lec.revisionDone = true;
+      ioqmUpdateStreak();
+      ioqmLastActiveChapterId = chId;
+      ioqmSaveData();
+      ioqmRender();
+      ioqmScrollToLastChapter();
+      const isChNow = ch.lectures.every(l => ioqmIsLectureFullyComplete(l));
+      ioqmCreateConfetti(!wasChDone && isChNow ? 10 : 1);
+    }
+
+    function ioqmInit() {
+      ioqmLoadData();
+      ioqmRender();
+      ioqmScrollToLastChapter();
+    }
+  </script>
+</body>
+</html>
